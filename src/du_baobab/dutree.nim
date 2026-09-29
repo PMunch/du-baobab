@@ -5,7 +5,7 @@
 ## to include files) and sizes are in 1024-byte blocks (`du -b` gives bytes,
 ## `du -h` gives human-readable sizes such as `4.0K`).
 
-import std/[os, strutils, tables, algorithm, math, unicode]
+import std/[os, strutils, tables, algorithm, math, unicode, sets, hashes]
 
 type
   DuNode* = ref object
@@ -130,6 +130,10 @@ proc parseDu*(input: string, blockSize: int64 = 1024,
 proc parseDuFile*(filename: string, blockSize: int64 = 1024): DuNode =
   parseDu(readFile(filename), blockSize)
 
+proc hash*(node: DuNode): Hash =
+  ## By identity, so nodes can be kept in sets.
+  hash(cast[pointer](node))
+
 proc isDir*(node: DuNode): bool =
   ## Whether the node can be navigated into.
   node.children.len > 0
@@ -177,3 +181,16 @@ proc sortedChildren*(node: DuNode, column: SortColumn,
       result = cmp(a.name, b.name))
   for entry in entries:
     result.add entry.node
+
+type TreeRow* = tuple[node: DuNode, depth: int]
+
+proc visibleRows*(node: DuNode, column: SortColumn, descending: bool,
+                  expanded: HashSet[DuNode]): seq[TreeRow] =
+  ## Rows of a tree view of `node`: its sorted children, each followed by
+  ## the rows of its own children if it is in `expanded`.
+  proc add(rows: var seq[TreeRow], node: DuNode, depth: int) =
+    for child in node.sortedChildren(column, descending):
+      rows.add (child, depth)
+      if child in expanded:
+        rows.add(child, depth + 1)
+  result.add(node, 0)

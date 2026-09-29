@@ -38,4 +38,5 @@ nimble test
 - Hover a segment to see its name and size in the centre.
 - Click a segment, or double-click a list row (or press Enter), to open that directory.
 - Click a column header to sort by it; click again to reverse the order.
+- Click the arrow next to a folder to expand it in the list.
 - Click the centre, or the back button, to go to the parent directory.

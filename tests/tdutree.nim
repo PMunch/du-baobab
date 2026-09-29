@@ -1,4 +1,4 @@
-import std/[unittest, os, tables]
+import std/[unittest, os, tables, sets]
 import std/strutils except formatSize
 import du_baobab/[dutree, format]
 
@@ -176,3 +176,22 @@ suite "sortedChildren":
   test "ties are broken by size":
     let tied = parseDu("4\tr/small\n8\tr/big\n16\tr\n")
     check tied.sortedChildren(SortContents, false).names == @["big", "small"]
+
+suite "visibleRows":
+  let root = parseDu("4\tr/a/x\n4\tr/a/y/z\n8\tr/a/y\n16\tr/a\n8\tr/b\n28\tr\n")
+  let a = root.child("a")
+
+  proc rows(expanded: openArray[DuNode]): seq[(string, int)] =
+    for row in root.visibleRows(SortName, false, toHashSet(expanded)):
+      result.add (row.node.name, row.depth)
+
+  test "collapsed":
+    check rows([]) == @[("a", 0), ("b", 0)]
+
+  test "expanded children follow their parent, sorted":
+    check rows([a]) == @[("a", 0), ("x", 1), ("y", 1), ("b", 0)]
+    check rows([a, a.child("y")]) ==
+      @[("a", 0), ("x", 1), ("y", 1), ("z", 2), ("b", 0)]
+
+  test "children of collapsed nodes stay hidden":
+    check rows([a.child("y")]) == @[("a", 0), ("b", 0)]

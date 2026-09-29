@@ -1,9 +1,13 @@
 ## Owlkettle UI: a directory list on the left and a rings chart on the right.
 
+import std/sets
 import owlkettle, owlkettle/cairo
 import ./[dutree, format, rings, ringchart, sortablecolumnview]
 
-const MaxRingDepth = 5
+const
+  MaxRingDepth = 5
+  IndentWidth = 16 ## Per level of the tree
+  ExpanderWidth = 22 ## Width of the expander buttons, used to align files
 
 let columns = @[
   # Indexed by SortColumn
@@ -19,10 +23,12 @@ viewable App:
   layout: RingLayout
   sortColumn: SortColumn = SortSize
   sortDescending: bool = true
-  # Children of `current` in display order, cached as sorting by contents
-  # is not free and the view is rebuilt on every hover change.
-  children: seq[DuNode]
-  childrenKey: tuple[node: DuNode, column: SortColumn, descending: bool]
+  expanded: HashSet[DuNode] ## Folders opened in the list's tree
+  expandedVersion: int     ## Changes whenever `expanded` does
+  # Rows of the list, cached as sorting by contents is not free and the
+  # view is rebuilt on every hover change.
+  rows: seq[TreeRow]
+  rowsKey: tuple[node: DuNode, column: SortColumn, descending: bool, version: int]
 
 proc navigate(app: AppState, node: DuNode) =
   if not node.isNil and node.isDir:
@@ -42,12 +48,20 @@ proc sortBy(app: AppState, column: SortColumn, descending: bool) =
     app.sortColumn = column
     app.sortDescending = column != SortName
 
-proc sortedChildren(app: AppState): seq[DuNode] =
-  let key = (app.current, app.sortColumn, app.sortDescending)
-  if key != app.childrenKey:
-    app.children = app.current.sortedChildren(app.sortColumn, app.sortDescending)
-    app.childrenKey = key
-  app.children
+proc toggleExpanded(app: AppState, node: DuNode) =
+  if node in app.expanded:
+    app.expanded.excl node
+  else:
+    app.expanded.incl node
+  inc app.expandedVersion
+
+proc visibleRows(app: AppState): seq[TreeRow] =
+  let key = (app.current, app.sortColumn, app.sortDescending, app.expandedVersion)
+  if key != app.rowsKey:
+    app.rows = app.current.visibleRows(app.sortColumn, app.sortDescending,
+                                       app.expanded)
+    app.rowsKey = key
+  app.rows
 
 proc titleOf(node: DuNode): string =
   for i, n in node.ancestors:
@@ -57,7 +71,7 @@ proc titleOf(node: DuNode): string =
 method view(app: AppState): Widget =
   let
     current = app.current
-    children = app.sortedChildren()
+    rows = app.visibleRows()
   result = gui:
     Window:
       title = "du-baobab"
@@ -80,38 +94,52 @@ method view(app: AppState): Widget =
 
         ScrolledWindow {.resize: true, shrink: false.}:
           SortableColumnView:
-            rows = children.len
+            rows = rows.len
             columns = columns
             sortColumn = ord(app.sortColumn)
             sortDescending = app.sortDescending
             selectionMode = SelectionSingle
-            contentId = current.path & '|' & $app.sortColumn & '|' & $app.sortDescending
+            # Rows are added and removed at the end, so the selection would
+            # move to another entry when a folder is expanded or collapsed.
+            contentId = current.path & '|' & $app.sortColumn & '|' &
+                        $app.sortDescending & '|' & $app.expandedVersion
 
             proc sort(column: int, descending: bool) =
               if column >= 0:
                 app.sortBy(SortColumn(column), descending)
 
             proc activate(index: int) =
-              app.navigate(children[index])
+              app.navigate(rows[index].node)
 
             proc viewItem(row, column: int): Widget =
-              let child = children[row]
+              let
+                (child, depth) = rows[row]
+                parentSize = child.parent.size
               case SortColumn(column)
               of SortName:
                 result = gui:
                   Box:
                     orient = OrientX
                     spacing = 8
-                    Label {.expand: false.}:
-                      text = if child.isDir: "›" else: " "
-                      sizeRequest = (12, -1)
+                    margin = Margin(left: IndentWidth * depth)
+                    if child.isDir:
+                      Button {.expand: false.}:
+                        icon = if child in app.expanded: "pan-down-symbolic"
+                               else: "pan-end-symbolic"
+                        style = [ButtonFlat, StyleClass("expander")]
+                        tooltip = if child in app.expanded: "Collapse" else: "Expand"
+                        proc clicked() =
+                          app.toggleExpanded(child)
+                    else:
+                      Box {.expand: false.}:
+                        sizeRequest = (ExpanderWidth, -1)
                     DrawingArea {.expand: false.}:
                       sizeRequest = (40, -1)
                       proc draw(ctx: CairoContext, size: (int, int)): bool =
                         ctx.drawShareBar(size[0].float, size[1].float,
-                                         child.size.float / max(1, current.size).float)
+                                         child.size.float / max(1, parentSize).float)
                     Label {.expand: false.}:
-                      text = formatPercent(child.size, current.size)
+                      text = formatPercent(child.size, parentSize)
                       xAlign = 1.0
                       sizeRequest = (64, -1)
                     Label:
@@ -157,4 +185,13 @@ method view(app: AppState): Widget =
             result = true
 
 proc runApp*(root: DuNode) =
-  brew(gui(App(root = root, current = root)))
+  brew(gui(App(root = root, current = root)), stylesheets = [
+    # Keep the expander buttons as small as the text, like GtkTreeExpander
+    newStylesheet("""
+      button.expander {
+        min-width: 16px;
+        min-height: 16px;
+        padding: 0 2px;
+      }
+    """)
+  ])
