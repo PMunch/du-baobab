@@ -1,0 +1,135 @@
+## Parsing of `du` output into a tree of directories.
+##
+## `du` prints one line per entry in the form `<size>\t<path>`, children
+## before their parents. By default only directories are listed (use `du -a`
+## to include files) and sizes are in 1024-byte blocks (`du -b` gives bytes,
+## `du -h` gives human-readable sizes such as `4.0K`).
+
+import std/[os, strutils, tables, algorithm, math]
+
+type
+  DuNode* = ref object
+    name*: string        ## Last path component (full path for the root)
+    path*: string        ## Path as printed by du
+    size*: int64         ## Size in bytes
+    children*: seq[DuNode] ## Sorted by size, largest first
+    parent* {.cursor.}: DuNode
+    synthetic*: bool     ## Placeholder for space not accounted to any listed child
+
+  DuParseError* = object of ValueError
+
+const FilesNodeName* = "(files)"
+
+proc parseSize*(s: string, blockSize: int64 = 1024): int64 =
+  ## Parses a du size column. Plain numbers are multiplied by `blockSize`,
+  ## numbers with a K/M/G/T/P suffix (from `du -h`) are interpreted as
+  ## binary multiples of bytes.
+  let s = s.strip()
+  if s.len == 0:
+    raise newException(DuParseError, "empty size")
+  let suffix = s[^1].toUpperAscii()
+  const units = "KMGTPE"
+  let unitIdx = units.find(suffix)
+  if unitIdx >= 0:
+    let value = parseFloat(s[0 ..< ^1])
+    result = int64(value * pow(1024.0, float(unitIdx + 1)))
+  else:
+    result = parseBiggestInt(s) * blockSize
+
+proc normalizePath(p: string): string =
+  result = p
+  while result.len > 1 and result.endsWith('/'):
+    result.setLen(result.len - 1)
+
+proc sortBySize*(node: DuNode) =
+  node.children.sort(proc (a, b: DuNode): int = cmp(b.size, a.size))
+  for child in node.children:
+    child.sortBySize()
+
+proc addFilesNodes(node: DuNode) =
+  ## Adds a synthetic child for space in `node` not covered by its children,
+  ## i.e. the files directly inside a directory when du was run without `-a`.
+  if node.children.len == 0:
+    return
+  var childSum: int64
+  for child in node.children:
+    child.addFilesNodes()
+    childSum += child.size
+  if node.size > childSum:
+    node.children.add DuNode(
+      name: FilesNodeName,
+      path: node.path / FilesNodeName,
+      size: node.size - childSum,
+      parent: node,
+      synthetic: true
+    )
+
+proc parseDu*(input: string, blockSize: int64 = 1024,
+              addFiles = true): DuNode =
+  ## Builds a tree from du output. The root is the entry that is an ancestor
+  ## of all others (normally the last line).
+  var nodes = initOrderedTable[string, DuNode]()
+  var lineNo = -1
+  for rawLine in input.splitLines():
+    inc lineNo
+    let line = rawLine.strip(leading = false)
+    if line.len == 0:
+      continue
+    var sep = line.find('\t')
+    if sep < 0:
+      sep = line.find(' ')
+    if sep < 0:
+      raise newException(DuParseError,
+        "line " & $(lineNo + 1) & ": expected '<size>\\t<path>'")
+    let path = normalizePath(line[sep + 1 .. ^1].strip(trailing = false))
+    let size =
+      try: parseSize(line[0 ..< sep], blockSize)
+      except ValueError as e:
+        raise newException(DuParseError,
+          "line " & $(lineNo + 1) & ": " & e.msg)
+    nodes[path] = DuNode(name: extractFilename(path), path: path, size: size)
+
+  if nodes.len == 0:
+    raise newException(DuParseError, "no entries found")
+
+  for path, node in nodes:
+    let parentPath = parentDir(path)
+    if parentPath != path and parentPath in nodes:
+      node.parent = nodes[parentPath]
+      node.parent.children.add node
+    elif result.isNil or node.size > result.size:
+      # Candidate root; with well-formed input there is exactly one.
+      result = node
+
+  if result.name.len == 0:
+    result.name = result.path
+  if addFiles:
+    result.addFilesNodes()
+  result.sortBySize()
+
+proc parseDuFile*(filename: string, blockSize: int64 = 1024): DuNode =
+  parseDu(readFile(filename), blockSize)
+
+proc isDir*(node: DuNode): bool =
+  ## Whether the node can be navigated into.
+  node.children.len > 0
+
+proc depth*(node: DuNode): int =
+  var cur = node.parent
+  while not cur.isNil:
+    inc result
+    cur = cur.parent
+
+proc ancestors*(node: DuNode): seq[DuNode] =
+  ## Path from the root down to `node`, inclusive.
+  var cur = node
+  while not cur.isNil:
+    result.add cur
+    cur = cur.parent
+  result.reverse()
+
+proc countItems*(node: DuNode): int =
+  ## Number of entries (recursively) below `node`, excluding synthetic ones.
+  for child in node.children:
+    if not child.synthetic:
+      result += 1 + child.countItems()

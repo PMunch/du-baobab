@@ -1,0 +1,7 @@
+/du_baobab
+/tests/*
+!/tests/*.nim
+!/tests/*.nims
+!/tests/data/
+nimcache/
+nimblecache/
