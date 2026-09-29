@@ -152,3 +152,27 @@ suite "format":
     check formatSize(999_999) == "1.0 MB"
   test "percent":
     check formatPercent(1694, 10000) == "16.94%"
+
+suite "sortedChildren":
+  # a has 3 items and 16K, b has 1 item and 20K, C has none and 8K
+  let root = parseDu("4\tr/a/x\n4\tr/a/y\n4\tr/a/z\n16\tr/a\n" &
+                     "16\tr/b/big\n20\tr/b\n8\tr/C\n48\tr\n")
+
+  proc names(nodes: seq[DuNode]): seq[string] =
+    for n in nodes: result.add n.name
+
+  test "by name, case insensitive":
+    check root.sortedChildren(SortName, false).names == @["a", "b", "C"]
+    check root.sortedChildren(SortName, true).names == @["C", "b", "a"]
+
+  test "by size":
+    check root.sortedChildren(SortSize, true).names == @["b", "a", "C"]
+    check root.sortedChildren(SortSize, false).names == @["C", "a", "b"]
+
+  test "by contents":
+    check root.sortedChildren(SortContents, true).names == @["a", "b", "C"]
+    check root.sortedChildren(SortContents, false).names == @["C", "b", "a"]
+
+  test "ties are broken by size":
+    let tied = parseDu("4\tr/small\n8\tr/big\n16\tr\n")
+    check tied.sortedChildren(SortContents, false).names == @["big", "small"]

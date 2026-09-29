@@ -5,7 +5,7 @@
 ## to include files) and sizes are in 1024-byte blocks (`du -b` gives bytes,
 ## `du -h` gives human-readable sizes such as `4.0K`).
 
-import std/[os, strutils, tables, algorithm, math]
+import std/[os, strutils, tables, algorithm, math, unicode]
 
 type
   DuNode* = ref object
@@ -144,3 +144,29 @@ proc countItems*(node: DuNode): int =
   for child in node.children:
     if not child.synthetic:
       result += 1 + child.countItems()
+
+type SortColumn* = enum
+  SortName, SortSize, SortContents
+
+proc sortedChildren*(node: DuNode, column: SortColumn,
+                     descending: bool): seq[DuNode] =
+  ## Children of `node` ordered by `column`. Names are compared case
+  ## insensitively; ties are broken by size (largest first), then name.
+  var entries: seq[tuple[node: DuNode, name: string, items: int]]
+  for child in node.children:
+    entries.add (child, unicode.toLower(child.name),
+                 (if column == SortContents: child.countItems else: 0))
+  entries.sort(proc (a, b: typeof(entries[0])): int =
+    result =
+      case column
+      of SortName: cmp(a.name, b.name)
+      of SortSize: cmp(a.node.size, b.node.size)
+      of SortContents: cmp(a.items, b.items)
+    if descending:
+      result = -result
+    if result == 0:
+      result = cmp(b.node.size, a.node.size)
+    if result == 0:
+      result = cmp(a.name, b.name))
+  for entry in entries:
+    result.add entry.node
