@@ -1,0 +1,76 @@
+3120	sample/Holiday Photos 2019/IMG_0001.jpg
+2988	sample/Holiday Photos 2019/IMG_0002.jpg
+3410	sample/Holiday Photos 2019/IMG 0003 (edited).jpg
+24576	sample/Holiday Photos 2019/Raw/DSC_1001.NEF
+25012	sample/Holiday Photos 2019/Raw/DSC_1002.NEF
+23890	sample/Holiday Photos 2019/Raw/DSC_1003.NEF
+73482	sample/Holiday Photos 2019/Raw
+4	sample/Holiday Photos 2019/Thumbs
+83008	sample/Holiday Photos 2019
+188	sample/My Documents/CV - final (2).pdf
+36	sample/My Documents/letter to landlord.docx
+412	sample/My Documents/Tax Returns/2022/return.pdf
+416	sample/My Documents/Tax Returns/2022
+436	sample/My Documents/Tax Returns/2023/return.pdf
+5120	sample/My Documents/Tax Returns/2023/receipts.zip
+5560	sample/My Documents/Tax Returns/2023
+5980	sample/My Documents/Tax Returns
+4	sample/My Documents/two  spaces/note.txt
+8	sample/My Documents/two  spaces
+4	sample/My Documents/ leading space/a.txt
+8	sample/My Documents/ leading space
+4	sample/My Documents/trailing space /b.txt
+8	sample/My Documents/trailing space 
+6232	sample/My Documents
+12	sample/src/main.nim
+8	sample/src/README.md
+18432	sample/src/.git/objects/pack/pack-3f2a.pack
+256	sample/src/.git/objects/pack/pack-3f2a.idx
+18692	sample/src/.git/objects/pack
+4	sample/src/.git/objects/info
+18700	sample/src/.git/objects
+4	sample/src/.git/refs/heads/main
+8	sample/src/.git/refs/heads
+4	sample/src/.git/refs/tags
+16	sample/src/.git/refs
+4	sample/src/.git/HEAD
+4	sample/src/.git/config
+18728	sample/src/.git
+2048	sample/src/build/app
+512	sample/src/build/app.o
+2564	sample/src/build
+21316	sample/src
+31244	sample/Music/Björk/Homogenic/01 - Hunter.flac
+29876	sample/Music/Björk/Homogenic/02 - Jóga.flac
+61124	sample/Music/Björk/Homogenic
+61128	sample/Music/Björk
+45012	sample/Music/Sigur Rós/( )/Untitled #1.flac
+45016	sample/Music/Sigur Rós/( )
+45020	sample/Music/Sigur Rós
+9216	sample/Music/AC_DC & Friends/Rock 'n' Roll "Live".mp3
+9220	sample/Music/AC_DC & Friends
+115372	sample/Music
+4	sample/日本語のフォルダ/ファイル.txt
+1536	sample/日本語のフォルダ/写真.png
+1544	sample/日本語のフォルダ
+4	sample/.hidden/.config/settings.json
+8	sample/.hidden/.config
+6144	sample/.hidden/cache.db
+6156	sample/.hidden
+4	sample/weird/tab	here.txt
+4	sample/weird/back\slash.txt
+4	sample/weird/semi;colon
+4	sample/weird/percent%20encoded
+4	sample/weird/..double-dot
+820	sample/weird/file.with.many.dots.tar.gz
+4	sample/weird/-starts-with-dash
+4	sample/weird/#hash
+4	sample/weird/$dollar
+4	sample/weird/emoji 🎉.txt
+4	sample/weird/123
+864	sample/weird
+4	sample/empty dir
+0	sample/empty file.txt
+12582912	sample/disk image.iso
+1843200	sample/backup.tar.zst
+14660612	sample

@@ -1,0 +1,31 @@
+73482	sample/Holiday Photos 2019/Raw
+4	sample/Holiday Photos 2019/Thumbs
+83008	sample/Holiday Photos 2019
+416	sample/My Documents/Tax Returns/2022
+5560	sample/My Documents/Tax Returns/2023
+5980	sample/My Documents/Tax Returns
+8	sample/My Documents/two  spaces
+8	sample/My Documents/ leading space
+8	sample/My Documents/trailing space 
+6232	sample/My Documents
+18692	sample/src/.git/objects/pack
+4	sample/src/.git/objects/info
+18700	sample/src/.git/objects
+8	sample/src/.git/refs/heads
+4	sample/src/.git/refs/tags
+16	sample/src/.git/refs
+18728	sample/src/.git
+2564	sample/src/build
+21316	sample/src
+61124	sample/Music/Björk/Homogenic
+61128	sample/Music/Björk
+45016	sample/Music/Sigur Rós/( )
+45020	sample/Music/Sigur Rós
+9220	sample/Music/AC_DC & Friends
+115372	sample/Music
+1544	sample/日本語のフォルダ
+8	sample/.hidden/.config
+6156	sample/.hidden
+864	sample/weird
+4	sample/empty dir
+14660612	sample
