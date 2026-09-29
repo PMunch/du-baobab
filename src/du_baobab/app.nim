@@ -1,7 +1,7 @@
 ## Owlkettle UI: a directory list on the left and a rings chart on the right.
 
 import std/sets
-import owlkettle, owlkettle/cairo
+import owlkettle, owlkettle/[cairo, widgetdef, bindings/gtk]
 import ./[dutree, format, rings, ringchart, sortablecolumnview]
 
 const
@@ -15,6 +15,15 @@ let columns = @[
   initSortableColumn("Size", fixedWidth = 100),
   initSortableColumn("Contents", fixedWidth = 100)
 ]
+
+proc gtk_widget_set_visible(widget: GtkWidget, visible: cbool) {.importc, cdecl.}
+
+renderable HiddenTitlebar of BaseWidget:
+  ## Stops GTK from adding a title bar, like libadwaita's `AdwWindow`.
+  hooks:
+    beforeBuild:
+      state.internalWidget = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
+      gtk_widget_set_visible(state.internalWidget, cbool(0))
 
 viewable App:
   root: DuNode
@@ -77,112 +86,119 @@ method view(app: AppState): Widget =
       title = "du-baobab"
       defaultSize = (1400, 850)
 
-      HeaderBar {.addTitlebar.}:
-        Label {.addTitle.}:
-          text = current.titleOf
-          ellipsize = EllipsizeStart
+      # GTK hides the title bar in fullscreen, so the header bar is part of
+      # the content instead, like in libadwaita apps.
+      HiddenTitlebar {.addTitlebar.}
 
-        Button {.addLeft.}:
-          icon = "go-previous-symbolic"
-          tooltip = "Parent folder"
-          sensitive = not current.parent.isNil
-          proc clicked() =
-            app.goUp()
+      Box:
+        orient = OrientY
 
-      Paned:
-        initialPosition = 560
+        HeaderBar {.expand: false.}:
+          Label {.addTitle.}:
+            text = current.titleOf
+            ellipsize = EllipsizeStart
 
-        ScrolledWindow {.resize: true, shrink: false.}:
-          SortableColumnView:
-            rows = rows.len
-            columns = columns
-            sortColumn = ord(app.sortColumn)
-            sortDescending = app.sortDescending
-            selectionMode = SelectionSingle
-            # Rows are added and removed at the end, so the selection would
-            # move to another entry when a folder is expanded or collapsed.
-            contentId = current.path & '|' & $app.sortColumn & '|' &
-                        $app.sortDescending & '|' & $app.expandedVersion
+          Button {.addLeft.}:
+            icon = "go-previous-symbolic"
+            tooltip = "Parent folder"
+            sensitive = not current.parent.isNil
+            proc clicked() =
+              app.goUp()
 
-            proc sort(column: int, descending: bool) =
-              if column >= 0:
-                app.sortBy(SortColumn(column), descending)
+        Paned:
+          initialPosition = 560
 
-            proc activate(index: int) =
-              app.navigate(rows[index].node)
+          ScrolledWindow {.resize: true, shrink: false.}:
+            SortableColumnView:
+              rows = rows.len
+              columns = columns
+              sortColumn = ord(app.sortColumn)
+              sortDescending = app.sortDescending
+              selectionMode = SelectionSingle
+              # Rows are added and removed at the end, so the selection would
+              # move to another entry when a folder is expanded or collapsed.
+              contentId = current.path & '|' & $app.sortColumn & '|' &
+                          $app.sortDescending & '|' & $app.expandedVersion
 
-            proc viewItem(row, column: int): Widget =
-              let
-                (child, depth) = rows[row]
-                parentSize = child.parent.size
-              case SortColumn(column)
-              of SortName:
-                result = gui:
-                  Box:
-                    orient = OrientX
-                    spacing = 8
-                    margin = Margin(left: IndentWidth * depth)
-                    if child.isDir:
-                      Button {.expand: false.}:
-                        icon = if child in app.expanded: "pan-down-symbolic"
-                               else: "pan-end-symbolic"
-                        style = [ButtonFlat, StyleClass("expander")]
-                        tooltip = if child in app.expanded: "Collapse" else: "Expand"
-                        proc clicked() =
-                          app.toggleExpanded(child)
-                    else:
-                      Box {.expand: false.}:
-                        sizeRequest = (ExpanderWidth, -1)
-                    DrawingArea {.expand: false.}:
-                      sizeRequest = (40, -1)
-                      proc draw(ctx: CairoContext, size: (int, int)): bool =
-                        ctx.drawShareBar(size[0].float, size[1].float,
-                                         child.size.float / max(1, parentSize).float)
-                    Label {.expand: false.}:
-                      text = formatPercent(child.size, parentSize)
-                      xAlign = 1.0
-                      sizeRequest = (64, -1)
+              proc sort(column: int, descending: bool) =
+                if column >= 0:
+                  app.sortBy(SortColumn(column), descending)
+
+              proc activate(index: int) =
+                app.navigate(rows[index].node)
+
+              proc viewItem(row, column: int): Widget =
+                let
+                  (child, depth) = rows[row]
+                  parentSize = child.parent.size
+                case SortColumn(column)
+                of SortName:
+                  result = gui:
+                    Box:
+                      orient = OrientX
+                      spacing = 8
+                      margin = Margin(left: IndentWidth * depth)
+                      if child.isDir:
+                        Button {.expand: false.}:
+                          icon = if child in app.expanded: "pan-down-symbolic"
+                                 else: "pan-end-symbolic"
+                          style = [ButtonFlat, StyleClass("expander")]
+                          tooltip = if child in app.expanded: "Collapse" else: "Expand"
+                          proc clicked() =
+                            app.toggleExpanded(child)
+                      else:
+                        Box {.expand: false.}:
+                          sizeRequest = (ExpanderWidth, -1)
+                      DrawingArea {.expand: false.}:
+                        sizeRequest = (40, -1)
+                        proc draw(ctx: CairoContext, size: (int, int)): bool =
+                          ctx.drawShareBar(size[0].float, size[1].float,
+                                           child.size.float / max(1, parentSize).float)
+                      Label {.expand: false.}:
+                        text = formatPercent(child.size, parentSize)
+                        xAlign = 1.0
+                        sizeRequest = (64, -1)
+                      Label:
+                        text = child.name
+                        xAlign = 0.0
+                        ellipsize = EllipsizeEnd
+                of SortSize:
+                  result = gui:
                     Label:
-                      text = child.name
-                      xAlign = 0.0
-                      ellipsize = EllipsizeEnd
-              of SortSize:
-                result = gui:
-                  Label:
-                    text = formatSize(child.size)
-                    xAlign = 1.0
-              of SortContents:
-                result = gui:
-                  Label:
-                    text = if child.isDir: formatItems(child.countItems) else: ""
-                    xAlign = 1.0
+                      text = formatSize(child.size)
+                      xAlign = 1.0
+                of SortContents:
+                  result = gui:
+                    Label:
+                      text = if child.isDir: formatItems(child.countItems) else: ""
+                      xAlign = 1.0
 
-        DrawingArea {.resize: true, shrink: false.}:
-          proc draw(ctx: CairoContext, size: (int, int)): bool =
-            app.layout = layoutRings(current, size[0].float, size[1].float,
-                                     maxDepth = MaxRingDepth)
-            ctx.drawRings(app.layout, app.hovered)
+          DrawingArea {.resize: true, shrink: false.}:
+            proc draw(ctx: CairoContext, size: (int, int)): bool =
+              app.layout = layoutRings(current, size[0].float, size[1].float,
+                                       maxDepth = MaxRingDepth)
+              ctx.drawRings(app.layout, app.hovered)
 
-          proc mouseMoved(event: MotionEvent): bool =
-            let hit = app.layout.hitTest(event.x, event.y)
-            let node =
+            proc mouseMoved(event: MotionEvent): bool =
+              let hit = app.layout.hitTest(event.x, event.y)
+              let node =
+                case hit.kind
+                of HitSegment: app.layout.segments[hit.index].node
+                of HitCenter: current
+                of HitNone: nil
+              if node != app.hovered:
+                app.hovered = node
+                result = true
+
+            proc mouseReleased(event: ButtonEvent): bool =
+              if event.button != 0:
+                return false
+              let hit = app.layout.hitTest(event.x, event.y)
               case hit.kind
-              of HitSegment: app.layout.segments[hit.index].node
-              of HitCenter: current
-              of HitNone: nil
-            if node != app.hovered:
-              app.hovered = node
+              of HitSegment: app.navigate(app.layout.segments[hit.index].node)
+              of HitCenter: app.goUp()
+              of HitNone: discard
               result = true
-
-          proc mouseReleased(event: ButtonEvent): bool =
-            if event.button != 0:
-              return false
-            let hit = app.layout.hitTest(event.x, event.y)
-            case hit.kind
-            of HitSegment: app.navigate(app.layout.segments[hit.index].node)
-            of HitCenter: app.goUp()
-            of HitNone: discard
-            result = true
 
 proc runApp*(root: DuNode) =
   brew(gui(App(root = root, current = root)), stylesheets = [
