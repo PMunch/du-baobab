@@ -18,7 +18,9 @@ type
 
   DuParseError* = object of ValueError
 
-const FilesNodeName* = "(files)"
+const
+  FilesNodeName* = "(files)"
+  DirEntrySize* = 4096 ## Space a directory takes up itself on most file systems
 
 proc parseSize*(s: string, blockSize: int64 = 1024): int64 =
   ## Parses a du size column. Plain numbers are multiplied by `blockSize`,
@@ -36,7 +38,7 @@ proc parseSize*(s: string, blockSize: int64 = 1024): int64 =
   else:
     result = parseBiggestInt(s) * blockSize
 
-proc normalizePath(p: string): string =
+proc stripTrailingSlashes(p: string): string =
   result = p
   while result.len > 1 and result.endsWith('/'):
     result.setLen(result.len - 1)
@@ -49,13 +51,15 @@ proc sortBySize*(node: DuNode) =
 proc addFilesNodes(node: DuNode) =
   ## Adds a synthetic child for space in `node` not covered by its children,
   ## i.e. the files directly inside a directory when du was run without `-a`.
+  ## A remainder of up to `DirEntrySize` is the directory itself and ignored,
+  ## otherwise `du -a` output would get a `(files)` entry in every directory.
   if node.children.len == 0:
     return
   var childSum: int64
   for child in node.children:
     child.addFilesNodes()
     childSum += child.size
-  if node.size > childSum:
+  if node.size - childSum > DirEntrySize:
     node.children.add DuNode(
       name: FilesNodeName,
       path: node.path / FilesNodeName,
@@ -70,20 +74,27 @@ proc parseDu*(input: string, blockSize: int64 = 1024,
   ## of all others (normally the last line).
   var nodes = initOrderedTable[string, DuNode]()
   var lineNo = -1
-  for rawLine in input.splitLines():
+  for line in input.splitLines():
     inc lineNo
-    let line = rawLine.strip(leading = false)
-    if line.len == 0:
+    if line.isEmptyOrWhitespace:
       continue
-    var sep = line.find('\t')
-    if sep < 0:
-      sep = line.find(' ')
-    if sep < 0:
-      raise newException(DuParseError,
-        "line " & $(lineNo + 1) & ": expected '<size>\\t<path>'")
-    let path = normalizePath(line[sep + 1 .. ^1].strip(trailing = false))
+    # Only the separator is removed: file names may start or end with spaces.
+    let tab = line.find('\t')
+    var sizeStr, rawPath: string
+    if tab >= 0:
+      sizeStr = line[0 ..< tab]
+      rawPath = line[tab + 1 .. ^1]
+    else:
+      # Fallback for space separated input, e.g. copied from a terminal
+      let fields = line.strip(trailing = false).split(' ', maxsplit = 1)
+      if fields.len < 2:
+        raise newException(DuParseError,
+          "line " & $(lineNo + 1) & ": expected '<size>\\t<path>'")
+      sizeStr = fields[0]
+      rawPath = fields[1].strip(trailing = false)
+    let path = stripTrailingSlashes(rawPath)
     let size =
-      try: parseSize(line[0 ..< sep], blockSize)
+      try: parseSize(sizeStr, blockSize)
       except ValueError as e:
         raise newException(DuParseError,
           "line " & $(lineNo + 1) & ": " & e.msg)

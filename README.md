@@ -4,8 +4,8 @@ An interactive, [Baobab](https://apps.gnome.org/Baobab/)-style visualization
 of `du` output, written in Nim with [owlkettle](https://github.com/can-lehmann/owlkettle) (GTK 4).
 
 ```sh
-du -a ~/Synced > synced.du.txt   # -a includes files, not just directories
-du_baobab synced.du.txt
+du -a ~/Documents > docs.du.txt  # -a includes files, not just directories
+du_baobab docs.du.txt
 du -ab /some/dir | du_baobab --block-size=1
 ```
 
