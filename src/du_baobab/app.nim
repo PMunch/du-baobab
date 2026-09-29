@@ -85,6 +85,7 @@ method view(app: AppState): Widget =
             sortColumn = ord(app.sortColumn)
             sortDescending = app.sortDescending
             selectionMode = SelectionSingle
+            contentId = current.path & '|' & $app.sortColumn & '|' & $app.sortDescending
 
             proc sort(column: int, descending: bool) =
               if column >= 0:

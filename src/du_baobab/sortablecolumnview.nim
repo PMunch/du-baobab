@@ -10,13 +10,15 @@
 ## `GtkStringList` of empty strings) and cells are tracked by list item rather
 ## than by position, so the row count can shrink without stale cells.
 
-import std/[tables, hashes]
+import std/[tables, hashes, monotimes, times]
 import owlkettle, owlkettle/[widgetdef, widgetutils, bindings/gtk]
 
 type
   GtkSorter = distinct pointer
   GtkSortType = enum
     GtkSortAscending, GtkSortDescending
+  GtkPropagationPhase = enum
+    GtkPhaseNone, GtkPhaseCapture, GtkPhaseBubble, GtkPhaseTarget
 
 {.push importc, cdecl.}
 proc gtk_custom_sorter_new(sortFunc, userData, userDestroy: pointer): GtkSorter
@@ -27,6 +29,12 @@ proc gtk_column_view_sort_by_column(view: GtkWidget, column: GtkColumnViewColumn
 proc gtk_column_view_sorter_get_primary_sort_column(sorter: GtkSorter): GtkColumnViewColumn
 proc gtk_column_view_sorter_get_primary_sort_order(sorter: GtkSorter): GtkSortType
 proc g_object_unref(obj: pointer)
+proc gtk_selection_model_unselect_all(model: GtkSelectionModel): cbool
+proc gtk_selection_model_is_selected(model: GtkSelectionModel, position: cuint): cbool
+proc gtk_single_selection_set_can_unselect(model: GtkSelectionModel, canUnselect: cbool)
+proc gtk_single_selection_set_autoselect(model: GtkSelectionModel, autoselect: cbool)
+proc gtk_event_controller_set_propagation_phase(controller: GtkEventController,
+                                                phase: GtkPropagationPhase)
 proc gtk_string_list_new(strings: cstringArray): GListModel
 proc gtk_string_list_splice(list: GListModel, position, nRemovals: cuint,
                             additions: cstringArray)
@@ -68,6 +76,7 @@ renderable SortableColumnView of BaseWidget:
   sortDescending: bool
 
   selectionMode: SelectionMode
+  contentId: string ## Identifies what the rows show, changing it clears the selection
   showRowSeparators: bool = false
   showColumnSeparators: bool = false
   singleClickActivate: bool = false
@@ -94,11 +103,30 @@ renderable SortableColumnView of BaseWidget:
   columnStates {.private, onlyState.}: seq[ColumnState]
   settingSort {.private, onlyState.}: bool ## Ignore sorter changes made by us
   settingRows {.private, onlyState.}: bool ## `viewItem` is still the old callback
+  # GTK activates rows on the second press of a double-click, but selects
+  # the row under the pointer on release, after the rows have changed.
+  lastDoublePress {.private, onlyState.}: MonoTime
+  unselectOnRelease {.private, onlyState.}: bool
 
   hooks:
     beforeBuild:
       state.model = gtk_string_list_new(nil)
       state.internalWidget = gtk_column_view_new(GtkSelectionModel(nil))
+
+      proc pressedCallback(gesture: GtkEventController, nPress: cint,
+                           x, y: cdouble, data: pointer) {.cdecl.} =
+        let state = cast[SortableColumnViewState](data)
+        if nPress == 2:
+          state.lastDoublePress = getMonoTime()
+        else:
+          state.unselectOnRelease = false
+
+      # Capture phase, as the row claims double-clicks before they bubble up
+      let gesture = gtk_gesture_click_new()
+      gtk_event_controller_set_propagation_phase(gesture, GtkPhaseCapture)
+      discard g_signal_connect(gesture, "pressed", pointer(pressedCallback),
+                               cast[pointer](state))
+      gtk_widget_add_controller(state.internalWidget, gesture)
     update:
       # The rows hook may not have run yet, so use the incoming row count
       let rowCount = if widget.hasRows: widget.valRows else: state.rows
@@ -120,6 +148,10 @@ renderable SortableColumnView of BaseWidget:
                             position: cuint,
                             data: ptr EventObj[proc (index: int)]) {.cdecl.} =
         logExceptions:
+          let state = SortableColumnViewState(data[].widget)
+          # Activated by the press that was just captured, not by the keyboard
+          if getMonoTime() - state.lastDoublePress < initDuration(milliseconds = 50):
+            state.unselectOnRelease = true
           data[].callback(int(position))
           data[].redraw()
 
@@ -130,7 +162,9 @@ renderable SortableColumnView of BaseWidget:
                                  data: ptr EventObj[proc (column: int, descending: bool)]) {.cdecl.} =
         logExceptions:
           let state = SortableColumnViewState(data[].widget)
-          if state.settingSort:
+          # GTK clears the sorter while destroying the view. Reacting to that
+          # would sort by a column again, which makes GTK abort.
+          if state.settingSort or pointer(gtk_widget_get_root(state.internalWidget)).isNil:
             return
           let primary = gtk_column_view_sorter_get_primary_sort_column(sorter)
           var column = -1
@@ -265,9 +299,32 @@ renderable SortableColumnView of BaseWidget:
           state.selectionModel = gtk_no_selection_new(state.model)
         of SelectionSingle:
           state.selectionModel = gtk_single_selection_new(state.model)
+          # Allow `contentId` to clear the selection
+          gtk_single_selection_set_can_unselect(state.selectionModel, cbool(1))
+          gtk_single_selection_set_autoselect(state.selectionModel, cbool(0))
         of SelectionBrowse, SelectionMultiple:
           state.selectionModel = gtk_multi_selection_new(state.model)
       gtk_column_view_set_model(state.internalWidget, state.selectionModel)
+
+      proc selectionChangedCallback(model: GtkSelectionModel, position, nItems: cuint,
+                                    data: pointer) {.cdecl.} =
+        let state = cast[SortableColumnViewState](data)
+        if state.unselectOnRelease:
+          for it in position ..< position + nItems:
+            if gtk_selection_model_is_selected(model, it) != 0:
+              state.unselectOnRelease = false
+              discard gtk_selection_model_unselect_all(model)
+              break
+
+      discard g_signal_connect(state.selectionModel, "selection-changed",
+                               pointer(selectionChangedCallback), cast[pointer](state))
+
+  hooks contentId:
+    (build, update):
+      if widget.hasContentId and widget.valContentId != state.contentId:
+        state.contentId = widget.valContentId
+        if not pointer(state.selectionModel).isNil:
+          discard gtk_selection_model_unselect_all(state.selectionModel)
 
   hooks showRowSeparators:
     property:
