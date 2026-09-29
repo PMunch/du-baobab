@@ -15,6 +15,7 @@ type
     children*: seq[DuNode] ## Sorted by size, largest first
     parent* {.cursor.}: DuNode
     synthetic*: bool     ## Placeholder for space not accounted to any listed child
+    itemCount: int       ## Cached result of `countItems`
 
   DuParseError* = object of ValueError
 
@@ -68,6 +69,13 @@ proc addFilesNodes(node: DuNode) =
       synthetic: true
     )
 
+proc computeItemCounts(node: DuNode) =
+  node.itemCount = 0
+  for child in node.children:
+    child.computeItemCounts()
+    if not child.synthetic:
+      node.itemCount += 1 + child.itemCount
+
 proc parseDu*(input: string, blockSize: int64 = 1024,
               addFiles = true): DuNode =
   ## Builds a tree from du output. The root is the entry that is an ancestor
@@ -116,6 +124,7 @@ proc parseDu*(input: string, blockSize: int64 = 1024,
     result.name = result.path
   if addFiles:
     result.addFilesNodes()
+  result.computeItemCounts()
   result.sortBySize()
 
 proc parseDuFile*(filename: string, blockSize: int64 = 1024): DuNode =
@@ -141,9 +150,7 @@ proc ancestors*(node: DuNode): seq[DuNode] =
 
 proc countItems*(node: DuNode): int =
   ## Number of entries (recursively) below `node`, excluding synthetic ones.
-  for child in node.children:
-    if not child.synthetic:
-      result += 1 + child.countItems()
+  node.itemCount
 
 type SortColumn* = enum
   SortName, SortSize, SortContents

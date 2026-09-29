@@ -30,10 +30,12 @@ nimble test
 | `src/du_baobab/format.nim` | Size / percentage formatting (SI units, like Baobab) |
 | `src/du_baobab/rings.nim` | Rings chart geometry and hit testing (no GTK) |
 | `src/du_baobab/ringchart.nim` | Cairo rendering of the rings chart |
+| `src/du_baobab/sortablecolumnview.nim` | Owlkettle's `ColumnView` with sortable headers |
 | `src/du_baobab/app.nim` | Owlkettle UI |
 
 ## Interaction
 
 - Hover a segment to see its name and size in the centre.
-- Click a segment or a list row to open that directory.
+- Click a segment, or double-click a list row (or press Enter), to open that directory.
+- Click a column header to sort by it; click again to reverse the order.
 - Click the centre, or the back button, to go to the parent directory.

@@ -1,20 +1,16 @@
 ## Owlkettle UI: a directory list on the left and a rings chart on the right.
 
-import std/strutils except formatSize
 import owlkettle, owlkettle/cairo
-import ./[dutree, format, rings, ringchart]
+import ./[dutree, format, rings, ringchart, sortablecolumnview]
 
-const
-  MaxRingDepth = 5
-  ColumnHeader = "column-header".StyleClass
-  Css = """
-    .column-header {
-      padding: 2px 0;
-      min-height: 0;
-      font-weight: bold;
-      color: alpha(currentColor, 0.6);
-    }
-  """
+const MaxRingDepth = 5
+
+let columns = @[
+  # Indexed by SortColumn
+  initSortableColumn("Name", expand = true, resizable = true),
+  initSortableColumn("Size", fixedWidth = 100),
+  initSortableColumn("Contents", fixedWidth = 100)
+]
 
 viewable App:
   root: DuNode
@@ -23,6 +19,10 @@ viewable App:
   layout: RingLayout
   sortColumn: SortColumn = SortSize
   sortDescending: bool = true
+  # Children of `current` in display order, cached as sorting by contents
+  # is not free and the view is rebuilt on every hover change.
+  children: seq[DuNode]
+  childrenKey: tuple[node: DuNode, column: SortColumn, descending: bool]
 
 proc navigate(app: AppState, node: DuNode) =
   if not node.isNil and node.isDir:
@@ -33,33 +33,21 @@ proc goUp(app: AppState) =
   if not app.current.parent.isNil:
     app.navigate(app.current.parent)
 
-proc sortBy(app: AppState, column: SortColumn) =
-  ## Clicking the active column flips the direction; names start ascending,
-  ## sizes and item counts descending.
+proc sortBy(app: AppState, column: SortColumn, descending: bool) =
+  ## Switching to another column starts with names ascending and sizes and
+  ## item counts descending; clicking the active column flips the direction.
   if app.sortColumn == column:
-    app.sortDescending = not app.sortDescending
+    app.sortDescending = descending
   else:
     app.sortColumn = column
     app.sortDescending = column != SortName
 
-proc columnHeader(app: AppState, title: string, column: SortColumn,
-                  align: float): Widget =
-  let active = app.sortColumn == column
-  result = gui:
-    Button:
-      style = [ButtonFlat, ColumnHeader]
-      tooltip = "Sort by " & title.toLowerAscii
-      proc clicked() =
-        app.sortBy(column)
-      Box:
-        orient = OrientX
-        spacing = 2
-        Label:
-          text = title
-          xAlign = align
-        if active:
-          Icon {.expand: false.}:
-            name = if app.sortDescending: "pan-down-symbolic" else: "pan-up-symbolic"
+proc sortedChildren(app: AppState): seq[DuNode] =
+  let key = (app.current, app.sortColumn, app.sortDescending)
+  if key != app.childrenKey:
+    app.children = app.current.sortedChildren(app.sortColumn, app.sortDescending)
+    app.childrenKey = key
+  app.children
 
 proc titleOf(node: DuNode): string =
   for i, n in node.ancestors:
@@ -67,7 +55,9 @@ proc titleOf(node: DuNode): string =
     result.add n.name
 
 method view(app: AppState): Widget =
-  let current = app.current
+  let
+    current = app.current
+    children = app.sortedChildren()
   result = gui:
     Window:
       title = "du-baobab"
@@ -88,30 +78,29 @@ method view(app: AppState): Widget =
       Paned:
         initialPosition = 560
 
-        Box {.resize: true, shrink: false.}:
-          orient = OrientY
+        ScrolledWindow {.resize: true, shrink: false.}:
+          SortableColumnView:
+            rows = children.len
+            columns = columns
+            sortColumn = ord(app.sortColumn)
+            sortDescending = app.sortDescending
+            selectionMode = SelectionSingle
 
-          Box {.expand: false.}:
-            orient = OrientX
-            spacing = 8
-            margin = 4
-            insert(app.columnHeader("Name", SortName, 0.0))
-            insert(app.columnHeader("Size", SortSize, 1.0)) {.expand: false.}
-            insert(app.columnHeader("Contents", SortContents, 1.0)) {.expand: false.}
+            proc sort(column: int, descending: bool) =
+              if column >= 0:
+                app.sortBy(SortColumn(column), descending)
 
-          Separator {.expand: false.}
+            proc activate(index: int) =
+              app.navigate(children[index])
 
-          ScrolledWindow:
-            ListBox:
-              selectionMode = SelectionSingle
-              for child in current.sortedChildren(app.sortColumn, app.sortDescending):
-                ListBoxRow {.addRow.}:
-                  proc activate() =
-                    app.navigate(child)
+            proc viewItem(row, column: int): Widget =
+              let child = children[row]
+              case SortColumn(column)
+              of SortName:
+                result = gui:
                   Box:
                     orient = OrientX
                     spacing = 8
-                    margin = 4
                     Label {.expand: false.}:
                       text = if child.isDir: "›" else: " "
                       sizeRequest = (12, -1)
@@ -128,14 +117,16 @@ method view(app: AppState): Widget =
                       text = child.name
                       xAlign = 0.0
                       ellipsize = EllipsizeEnd
-                    Label {.expand: false.}:
-                      text = formatSize(child.size)
-                      xAlign = 1.0
-                      sizeRequest = (90, -1)
-                    Label {.expand: false.}:
-                      text = if child.isDir: formatItems(child.countItems) else: ""
-                      xAlign = 1.0
-                      sizeRequest = (90, -1)
+              of SortSize:
+                result = gui:
+                  Label:
+                    text = formatSize(child.size)
+                    xAlign = 1.0
+              of SortContents:
+                result = gui:
+                  Label:
+                    text = if child.isDir: formatItems(child.countItems) else: ""
+                    xAlign = 1.0
 
         DrawingArea {.resize: true, shrink: false.}:
           proc draw(ctx: CairoContext, size: (int, int)): bool =
@@ -165,5 +156,4 @@ method view(app: AppState): Widget =
             result = true
 
 proc runApp*(root: DuNode) =
-  brew(gui(App(root = root, current = root)),
-       stylesheets = [newStylesheet(Css)])
+  brew(gui(App(root = root, current = root)))
