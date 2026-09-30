@@ -3,15 +3,16 @@
 ## Usage:
 ##   du ~/Documents > docs.du.txt && du_baobab docs.du.txt
 ##   du -b ~/Documents | du_baobab --block-size=1
+##   du_baobab                       # opens a file chooser
 
-import std/[parseopt, strutils]
-import du_baobab/[dutree, app]
+import std/[parseopt, strutils, terminal]
+import du_baobab/[app]
 
 const Usage = """
 Usage: du_baobab [options] [FILE]
 
-Visualize the output of `du`. Reads from FILE, or from stdin if FILE is
-omitted or `-`.
+Visualize the output of `du`. Reads from FILE, or from stdin if piped.
+When neither FILE nor piped input is available, opens a file chooser.
 
 Options:
   -B, --block-size=N  Size unit of du's numbers in bytes (default: 1024;
@@ -39,14 +40,12 @@ proc main() =
         quit "Unknown option: " & key & "\n\n" & Usage, 1
     of cmdEnd: discard
 
-  let input =
-    if filename in ["", "-"]: stdin.readAll()
-    else: readFile(filename)
-  let root =
-    try: parseDu(input, blockSize)
-    except DuParseError as e:
-      quit "Failed to parse du output: " & e.msg, 1
-  runApp(root)
+  if filename notin ["", "-"]:
+    runApp(ikFile, filename, blockSize)
+  elif filename == "-" or not stdin.isatty:
+    runApp(ikStdin, "", blockSize)
+  else:
+    runApp(ikNone, "", blockSize)
 
 when isMainModule:
   main()
