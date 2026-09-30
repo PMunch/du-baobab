@@ -377,7 +377,8 @@ proc runApp*(inputKind: InputKind, filename: string = "",
   of ikNone:
     mode = ModeSelect
 
-  brew(gui(App(mode = mode, blockSize = blockSize)), stylesheets = [
+  brew("com.github.pmunch.du-baobab",
+       gui(App(mode = mode, blockSize = blockSize)), stylesheets = [
     # Keep the expander buttons as small as the text, like GtkTreeExpander
     newStylesheet("""
       button.expander {
