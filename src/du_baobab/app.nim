@@ -363,6 +363,9 @@ method view(app: AppState): Widget =
                 of HitNone: discard
                 result = true
 
+proc g_set_prgname(name: cstring) {.importc, cdecl.}
+proc g_set_application_name(name: cstring) {.importc, cdecl.}
+
 proc runApp*(inputKind: InputKind, filename: string = "",
              blockSize: int64 = 1024) =
   var mode: AppMode
@@ -377,8 +380,13 @@ proc runApp*(inputKind: InputKind, filename: string = "",
   of ikNone:
     mode = ModeSelect
 
-  brew("com.github.pmunch.du-baobab",
-       gui(App(mode = mode, blockSize = blockSize)), stylesheets = [
+  # Named so the file chooser can register recently used files. We don't
+  # use owlkettle's `brew(id, ...)` for this as that hands our command line
+  # to GApplication, which rejects the FILE argument.
+  g_set_prgname("du-baobab")
+  g_set_application_name("du-baobab")
+
+  brew(gui(App(mode = mode, blockSize = blockSize)), stylesheets = [
     # Keep the expander buttons as small as the text, like GtkTreeExpander
     newStylesheet("""
       button.expander {
